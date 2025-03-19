@@ -1,0 +1,13 @@
+mqtt:
+  enabled: False
+
+cameras:
+  name_of_your_camera: # <------ Name the camera
+    enabled: True
+    ffmpeg:
+      inputs:
+        - path: rtsp://rtspstream:0BAmPwv_l-r6k6_YxMTad@zephyr.rtsp.stream/traffic # <----- The stream you want to use for detection
+          roles:
+            - detect
+    detect:
+      enabled: False # <---- disable detection until you have a working camera feed

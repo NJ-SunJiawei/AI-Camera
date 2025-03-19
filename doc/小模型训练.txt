@@ -1,0 +1,166 @@
+#https://github.com/skrashevich/double-take?tab=readme-ov-file
+
+docker pull skrashevich/double-take:latest
+
+1、docker run -d -v $(pwd)/.double-take:/.storage -p 3000:3000 skrashevich/double-take:latest
+
+2、
+'''
+version: '3.7'
+
+volumes:
+  double-take:
+
+services:
+  double-take:
+    container_name: double-take
+    image: skrashevich/double-take
+    restart: unless-stopped
+    volumes:
+      - double-take:/.storage
+    ports:
+      - 3000:3000
+'''
+
+3、订阅frigate的mqtt数据
+配置文件位置：
+/.storage/config/config.yml
+或者http://localhost:3000/config
+
+'''
+# enable authentication for ui and api (default: shown below)
+auth: false
+
+mqtt:
+  host: localhost
+  username:
+  password:
+  client_id:
+  tls:
+    # cert chains in PEM format: /path/to/client.crt
+    cert:
+    # private keys in PEM format: /path/to/client.key
+    key:
+    # optionally override the trusted CA certificates: /path/to/ca.crt
+    ca:
+    # if true the server will reject any connection which is not authorized with the list of supplied CAs
+    reject_unauthorized: false
+
+  topics:
+    # mqtt topic for frigate message subscription
+    frigate: frigate/events
+
+
+detect:
+  match:
+    # save match images
+    save: true
+    # include base64 encoded string in api results and mqtt messages
+    # options: true, false, box
+    base64: false
+    # minimum confidence needed to consider a result a match
+    confidence: 60
+    # hours to keep match images until they are deleted
+    purge: 168
+    # minimum area in pixels to consider a result a match
+    min_area: 10000
+
+  unknown:
+    # save unknown images
+    save: true
+    # include base64 encoded string in api results and mqtt messages
+    # options: true, false, box
+    base64: false
+    # minimum confidence needed before classifying a name as unknown
+    confidence: 40
+    # hours to keep unknown images until they are deleted
+    purge: 8
+    # minimum area in pixels to keep an unknown result
+    min_area: 0
+
+frigate:
+  url: http://localhost:5000
+  # if double take should send matches back to frigate as a sub label
+  # NOTE: requires frigate 0.11.0+
+  update_sub_labels: false
+
+  # stop the processing loop if a match is found
+  # if set to false all image attempts will be processed before determining the best match
+  stop_on_match: true
+
+  # ignore detected areas so small that face recognition would be difficult
+  # quadrupling the min_area of the detector is a good start
+  # does not apply to MQTT events
+  min_area: 0
+
+  # object labels that are allowed for facial recognition
+  labels:
+    - person
+
+  attempts:
+    # number of times double take will request a frigate latest.jpg for facial recognition
+    latest: 10
+    # number of times double take will request a frigate snapshot.jpg for facial recognition
+    snapshot: 10
+    # process frigate images from frigate/+/person/snapshot topics
+    mqtt: true
+    # add a delay expressed in seconds between each detection loop
+    delay: 0
+
+  image:
+    # height of frigate image passed for facial recognition
+    height: 500
+
+  # only process images from specific cameras
+  cameras:
+    # - front-door
+    # - garage
+
+  # only process images from specific zones
+  zones:
+    # - camera: garage
+    #   zone: driveway
+
+  # override frigate attempts and image per camera
+  events:
+    # front-door:
+    #   attempts:
+    #     # number of times double take will request a frigate latest.jpg for facial recognition
+    #     latest: 5
+    #     # number of times double take will request a frigate snapshot.jpg for facial recognition
+    #     snapshot: 5
+    #     # process frigate images from frigate/<camera-name>/person/snapshot topic
+    #     mqtt: false
+    #     # add a delay expressed in seconds between each detection loop
+    #     delay: 1
+
+    #   image:
+    #     # height of frigate image passed for facial recognition (only if using default latest.jpg and snapshot.jpg)
+    #     height: 1000
+    #     # custom image that will be used in place of latest.jpg
+    #     latest: http://camera-url.com/image.jpg
+    #     # custom image that will be used in place of snapshot.jpg
+    #     snapshot: http://camera-url.com/image.jpg
+
+    # This option allows setting a custom time delay for the MQTT home
+    # assistant device tracker.                                                   
+                                                                                
+    # By adjusting  device_tracker_timeout , users can determine how long they    
+    # want to wait before receiving a 'not_home' message when no person is        
+    # recognized. The time delay is implemented in minutes and the default value  
+    # is set to 30 minutes
+    device_tracker_timeout: 30
+'''
+
+
+4、在 Frigate 相机配置中增加 MQTT 快照大小
+'''
+cameras:
+  front-door:
+    mqtt:
+      timestamp: False
+      bounding_box: False
+      crop: True
+      quality: 100
+      height: 500
+'''

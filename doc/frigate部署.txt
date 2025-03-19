@@ -1,0 +1,325 @@
+
+Downloading model file from: https://huggingface.co/jinaai/jina-clip-v1/resolve/main/onnx/text_model_fp16.onnx
+
+创建测试流：https://rtsp.stream/
+rtsp://rtspstream:wpUPourUSVf9_fNXFzU9G@zephyr.rtsp.stream/movie
+rtsp://rtspstream:wpUPourUSVf9_fNXFzU9G@zephyr.rtsp.stream/pattern
+rtsp://rtspstream:wpUPourUSVf9_fNXFzU9G@zephyr.rtsp.stream/pattern2
+rtsp://rtspstream:wpUPourUSVf9_fNXFzU9G@zephyr.rtsp.stream/people
+rtsp://rtspstream:wpUPourUSVf9_fNXFzU9G@zephyr.rtsp.stream/traffic
+
+1、安装docker-compose：
+    sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+    docker-compose --version
+
+2、容器加速：
+    {
+      "registry-mirrors": [
+        "https://docker.m.daocloud.io"
+      ]
+    }
+
+    或者docker pull ghcr.m.daocloud.io/blakeblackshear/frigate:stable-tensorrt
+        docker pull ghcr.m.daocloud.io/blakeblackshear/frigate:stable
+
+3、当前稳定版本的官方docker镜像标签为：
+
+    stable- 为 amd64 构建标准护卫舰，为 arm64 构建 RPi 优化护卫舰
+    stable-standard-arm64- 为 arm64 构建标准护卫舰
+    stable-tensorrt- Frigate 专为运行 nvidia GPU 的 amd64 设备构建
+    当前稳定版本社区支持的docker镜像标签是：
+
+    stable-tensorrt-jp5- Frigate 针对运行 Jetpack 5 的 nvidia Jetson 设备进行了优化
+    stable-tensorrt-jp4- Frigate 针对运行 Jetpack 4.6 的 nvidia Jetson 设备进行了优化
+    stable-rk- 使用 Rockchip SoC 为 SBC 构建护卫舰
+    stable-rocm- 为AMD GPU打造的护卫舰
+    stable-h8l- 为 Hailo-8L M.2 PICe Raspberry Pi 5 帽构建护卫舰
+
+
+4、计算共享内存的大小：
+    您可以使用以下公式，使用为检测指定的分辨率计算每个相机的最小shm 大小： # Replace <width> and <height>
+    $ python -c 'print("{:.2f}MB".format((<width> * <height> * 1.5 * 20 + 270480) / 1048576))'
+
+    # Example for 1280x720, including logs
+    $ python -c 'print("{:.2f}MB".format((1280 * 720 * 1.5 * 20 + 270480) / 1048576)) + 40'
+    46.63MB
+
+    # Example for eight cameras detecting at 1280x720, including logs
+    $ python -c 'print("{:.2f}MB".format(((1280 * 720 * 1.5 * 20 + 270480) / 1048576) * 8 + 40))'
+    253MB
+
+5、CPU版本：
+    mkdir storage config && touch docker-compose.yml
+    touch config/config.yaml
+
+    '''
+    version: "3.9"
+    services:
+      frigate:
+        container_name: frigate
+        privileged: true # this may not be necessary for all setups
+        restart: unless-stopped
+        stop_grace_period: 30s # 停止宽限期被设置为 30 秒
+        image: ghcr.m.daocloud.io/blakeblackshear/frigate:stable
+        shm_size: "512mb" # update for your cameras based on calculation above
+        devices:
+          - /dev/dri/renderD128:/dev/dri/renderD128 # For intel hwaccel, needs to be updated for your hardware #硬件加速
+        volumes:
+          - /etc/localtime:/etc/localtime:ro
+          - ./config:/config
+          - ./storage:/media/frigate
+          - type: tmpfs # Optional: 1GB of memory, reduces SSD/SD Card wear
+            target: /tmp/cache
+            tmpfs:
+              size: 1000000000
+        ports:
+          - "8971:8971"
+          # - "5000:5000" # Internal unauthenticated access. Expose carefully.
+          - "8554:8554" # RTSP feeds
+          - "8555:8555/tcp" # WebRTC over tcp
+          - "8555:8555/udp" # WebRTC over udp
+        environment:
+          FRIGATE_RTSP_PASSWORD: "password"   #rstp流的密码可以做成环境变量
+          FRIGATE_JWT_SECRET："xxxxxxx"          #python3 -c 'import secrets; print(secrets.token_hex(64))'
+    '''
+
+#如果在启动时没有找到 secret，则 Frigate 会生成一个 secret 并将其存储在 config 目录中的文件中。.jwt_secret
+
+    docker run -d \
+      --name frigate \
+      --restart=unless-stopped \
+      --stop-timeout 30 \
+      --mount type=tmpfs,target=/tmp/cache,tmpfs-size=1000000000 \
+      --device /dev/dri/renderD128 \
+      --shm-size=64m \
+      -v ./storage:/media/frigate \
+      -v ./config:/config \
+      -v /etc/localtime:/etc/localtime:ro \
+      -p 8971:8971 \
+      -p 5000:5000 \
+      -p 8554:8554 \
+      -p 8555:8555/tcp \
+      -p 8555:8555/udp \
+      ghcr.m.daocloud.io/blakeblackshear/frigate:stable
+
+      ###/dev/dri/renderD128 为用户级别的应用提供了一个安全、便捷的接口来利用 GPU 进行图形加速处理。通常用于开源图形驱动（如 Intel、AMD 等）以及支持 DRM 的其他驱动
+
+5.1 检测相机流配置
+#全量配置：https://docs.frigate.video/configuration/reference
+
+    '''
+auth:
+  enabled: True
+  failed_login_rate_limit: "1/second;5/minute;20/hour"
+  reset_admin_password: true
+
+tls:
+  enabled: True
+
+mqtt:
+  enabled: False
+
+cameras:
+  name_of_your_camera: # <------ Name the camera
+    enabled: True
+    ffmpeg:
+      hwaccel_args: preset-vaapi #/dev/dri/renderD128硬件加速
+      inputs:
+        - path: rtmp://liteavapp.qcloud.com/live/liteavdemoplayerstreamid # <----- The stream you want to use for detection
+          roles:
+            - detect
+            - record
+    detect:
+      enabled: False # <---- disable detection until you have a working camera feed
+
+    record: # <----- Enable recording录音
+      enabled: True
+
+    motion:
+      mask:
+        - 0,461,3,0,1919,0,1919,843,1699,492,1344,458,1346,336,973,317,869,375,866,432 #在视频画面中哪些区域不需要进行运动检测
+
+    '''
+
+database:
+  # The path to store the SQLite DB (default: shown below)
+  path: /config/frigate.db
+
+#https://docs.frigate.video/guides/configuring_go2rtc
+
+    go2rtc:
+      streams:
+        back:
+          - rtsp://user:password@10.0.10.10:554/cam/realmonitor?channel=1&subtype=2
+
+    #如果摄像头流在 go2rtc 中可以工作但在您的浏览器中不工作，则视频编解码器可能不受支持。
+    #如果使用 H265，请切换到 H264
+    go2rtc:
+      streams:
+        back:
+          - rtsp://user:password@10.0.10.10:554/cam/realmonitor?channel=1&subtype=2
+          - "ffmpeg:back#video=h264#hardware"
+
+    #某些摄像头流可能需要使用 go2rtc 中的 ffmpeg 模块。这会导致启动时间变慢，但可以兼容更多流类型。
+    go2rtc:
+      streams:
+        back:
+          - ffmpeg:rtsp://user:password@10.0.10.10:554/cam/realmonitor?channel=1&subtype=2
+
+    #如果您可以看到视频但没有音频，这很可能是因为您的相机的音频流编解码器不是 AAC。
+    go2rtc:
+      streams:
+        back:
+          - rtsp://user:password@10.0.10.10:554/cam/realmonitor?channel=1&subtype=2
+          - "ffmpeg:back#audio=aac"
+
+    #同时转换音频和视频流，可以使用以下命令
+    go2rtc:
+      streams:
+        back:
+          - rtsp://user:password@10.0.10.10:554/cam/realmonitor?channel=1&subtype=2
+          - "ffmpeg:back#video=h264#audio=aac#hardware"
+
+    当使用 ffmpeg 模块时，您可以像这样添加 AAC 音频：
+    go2rtc:
+      streams:
+        back:
+          - "ffmpeg:rtsp://user:password@10.0.10.10:554/cam/realmonitor?channel=1&subtype=2#video=copy#audio=copy#audio=aac#hardware"
+
+#https://docs.frigate.video/guides/ha_notifications
+    消息通知：
+    automation:
+      - alias: Notify of tracked object
+        trigger:
+          platform: mqtt
+          topic: frigate/events
+        action:
+          - service: notify.mobile_app_pixel_3
+            data:
+              message: 'A {{trigger.payload_json["after"]["label"]}} was detected.'
+              data:
+                image: 'https://your.public.hass.address.com/api/frigate/notifications/{{trigger.payload_json["after"]["id"]}}/thumbnail.jpg?format=android'
+                tag: '{{trigger.payload_json["after"]["id"]}}'
+                when: '{{trigger.payload_json["after"]["start_time"]|int}}'
+
+
+6、Nvidia加速
+    #https://docs.frigate.video/configuration/hardware_acceleration
+    docker-compose yaml
+    '''
+    version: "3.9"
+    services:
+      frigate:
+        container_name: frigate-gpu
+        privileged: true # this may not be necessary for all setups
+        restart: unless-stopped
+        stop_grace_period: 30s # 停止宽限期被设置为 30 秒
+        image: ghcr.m.daocloud.io/blakeblackshear/frigate:stable-tensorrt
+        shm_size: "512mb" # update for your cameras based on calculation above
+        deploy:    # <------------- Add this section
+          resources:
+            reservations:
+              devices:
+                - driver: nvidia
+                  device_ids: ['0'] # this is only needed when using multiple GPUs
+                  count: 1 # number of GPUs
+                  capabilities: [gpu]
+        volumes:
+          - /etc/localtime:/etc/localtime:ro
+          - ./config:/config
+          - ./storage:/media/frigate
+          - type: tmpfs # Optional: 1GB of memory, reduces SSD/SD Card wear
+            target: /tmp/cache
+            tmpfs:
+              size: 1000000000
+        ports:
+          - "8971:8971"
+          # - "5000:5000" # Internal unauthenticated access. Expose carefully.
+          - "8554:8554" # RTSP feeds
+          - "8555:8555/tcp" # WebRTC over tcp
+          - "8555:8555/udp" # WebRTC over udp
+        environment:
+          FRIGATE_RTSP_PASSWORD: "password"   #rstp流的密码可以做成环境变量
+    '''
+    或者
+    docker run -d \
+      --name frigate-gpu \
+      --gpus=all \
+      --restart=unless-stopped \
+      --stop-timeout 30 \
+      --mount type=tmpfs,target=/tmp/cache,tmpfs-size=1000000000 \
+      --shm-size=64m \
+      -v ./storage:/media/frigate \
+      -v ./config:/config \
+      -v /etc/localtime:/etc/localtime:ro \
+      -p 8971:8971 \
+      -p 5000:5000 \
+      -p 8554:8554 \
+      -p 8555:8555/tcp \
+      -p 8555:8555/udp \
+      ghcr.m.daocloud.io/blakeblackshear/frigate:stable-tensorrt
+
+    修改配置文件：
+    ffmpeg:
+      hwaccel_args: preset-nvidia
+
+
+7、反向代理
+    https://docs.frigate.video/guides/reverse_proxy#nginx-reverse-proxy
+    这是设置的$server，$port应该与你暴露给 docker 容器的端口相匹配。你可以选择监听端口443并启用SSL
+
+    # ------------------------------------------------------------
+    # frigate.domain.com
+    # ------------------------------------------------------------
+
+    server {
+      set $forward_scheme http;
+      set $server         "192.168.100.2"; # FRIGATE SERVER LOCATION
+      set $port           8971;
+
+      listen 80;
+      listen 443 ssl http2;
+
+      server_name frigate.domain.com;
+    }
+
+8、调用大模型
+'''
+genai:
+  enabled: True
+  provider: openai
+  base_url: http://localhost:8080
+  api_key: "{FRIGATE_LOCALAI_API_KEY}"  # optional
+  model: gpt-4o
+  #有默认提示词
+  prompt: "Analyze the {label} in these images from the {camera} security camera. Focus on the actions, behavior, and potential intent of the {label}, rather than just describing its appearance."
+  object_prompts:
+    person: "Examine the main person in these images. What are they doing and what might their actions suggest about their intent (e.g., approaching a door, leaving an area, standing still)? Do not describe the surroundings or static details."
+    car: "Observe the primary vehicle in these images. Focus on its movement, direction, or purpose (e.g., parking, approaching, circling). If it's a delivery vehicle, mention the company."
+
+cameras:
+  front_camera: ...
+  indoor_camera:
+    genai: # <- disable GenAI for your indoor camera
+      enabled: False
+
+cameras:
+  front_door:
+    genai:
+      use_snapshot: True
+      prompt: "Analyze the {label} in these images from the {camera} security camera at the front door. Focus on the actions and potential intent of the {label}."
+      object_prompts:
+        person: "Examine the person in these images. What are they doing, and how might their actions suggest their purpose (e.g., delivering something, approaching, leaving)? If they are carrying or interacting with a package, include details about its source or destination."
+        cat: "Observe the cat in these images. Focus on its movement and intent (e.g., wandering, hunting, interacting with objects). If the cat is near the flower pots or engaging in any specific actions, mention it."
+      objects:
+        - person
+        - cat
+      required_zones:
+        - steps
+
+genai:
+  send_triggers:
+    tracked_object_end: true # default
+    after_significant_updates: 3 # how many updates to a tracked object before we should send an image
+'''

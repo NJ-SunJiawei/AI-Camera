@@ -1,0 +1,198 @@
+auth:
+  enabled: True
+  failed_login_rate_limit: "1/second;5/minute;20/hour"
+  reset_admin_password: true
+
+tls:
+  enabled: false
+
+mqtt:
+  enabled: false
+
+cameras:
+  sjw-test1: # <------ Name the camera
+    enabled: true
+    birdseye: #鸟瞰视图覆盖
+      mode: objects  #objects/False
+      order: 1 #排序
+    ffmpeg:
+      hwaccel_args: preset-nvidia
+      inputs:
+        - path: rtsp://rtspstream:wpUPourUSVf9_fNXFzU9G@zephyr.rtsp.stream/traffic # <----- The stream you want to use for detection
+          input_args: preset-rtsp-generic
+          roles:
+            - record
+        - path: rtsp://rtspstream:wpUPourUSVf9_fNXFzU9G@zephyr.rtsp.stream/traffic # <----- The stream you want to use for detection
+          input_args: preset-rtsp-generic
+          roles:
+            - detect
+    live:
+      height: 720
+    detect:
+      enabled: true
+      height: 720
+      width: 1280
+      fps: 5
+      annotation_offset: -500
+    record:
+      enabled: true
+    objects:
+      track:
+        - person
+        - car
+        - dog
+      filters:
+        person:
+          min_score: 0.55
+          min_area: 500
+        car:
+          min_score: 0.55
+          min_area: 700
+    motion:
+      mask: 0,0,0,0.33,0.165,0.307,0.285,0.312,0.38,0.297,0.494,0.282,0.569,0.3,0.631,0.295,0.688,0.293,0.802,0.283,1,0.298,1,0.172,1,0
+  sjw-test2: # <------ Name the camera
+    enabled: true
+    birdseye: #鸟瞰视图覆盖
+      mode: objects  #objects/False
+      order: 2 #排序
+    ffmpeg:
+      input_args: preset-rtmp-generic
+      output_args:
+          record: preset-record-generic-audio-copy
+      inputs:
+        - path: rtmp://liteavapp.qcloud.com/live/liteavdemoplayerstreamid # <----- The stream you want to use for detection
+          roles:
+            - detect
+            - record
+    detect:
+      enabled: true # <---- disable detection until you have a working camera feed
+      height: 720
+      width: 480
+      fps: 5
+
+ffmpeg:
+    hwaccel_args: "auto"
+
+record:
+  enabled: true
+  export:  #导出记录
+      timelapse_args: "-vf setpts=PTS/60 -r 25"  #将延时摄影速度更改为 60 倍（用于将 1 小时的录制转换为 1 分钟的延时），帧速率为 25 FPS：timelapse_args
+  retain:  #存储设置
+    days: 1    #0 不保存
+    mode: all  #保存所有视频  mode: motion #仅在检测到运动时保存视频
+  alerts:
+    retain:
+      days: 1
+      mode: motion  #all/motion/active_objects
+  detections:
+    retain:
+      days: 1
+      mode: motion  #all/motion/active_objects
+  sync_recordings: false #检查磁盘文件是否被删除，耗cpu性能，非必要勿开 
+
+snapshots:
+  enabled: false
+  timestamp: true
+  bounding_box: true
+  crop: true
+  quality: 70
+  retain:
+    default: 0.1
+
+timestamp_style:
+  position: bl
+  effect: solid
+
+##注意：可以在摄像头级别进行覆盖
+review:
+  alerts: #将警报限制为特定标签
+    labels:
+      - person
+  detections: #将检测限制为特定标签
+    labels:
+      - person
+      - car
+
+objects:
+  track:
+    - person
+    - face
+    - license_plate
+    - dog
+    - cat
+    - car
+    - package
+
+semantic_search:
+  enabled: true
+  reindex: False
+  model_size: large
+
+birdseye:
+  enabled: True
+  restream: True #鸟眼重播依赖go2rtc，启用 birdseye 重播将导致 birdseye 24/7 全天候运行，增加cpu负担。
+  mode: continuous
+  inactivity_threshold: 15 # 显示在过去 30 秒内具有已配置活动的所有摄像机
+  layout:
+    max_cameras: 1 #限制一次在 birdseye 上显示的相机数量
+    scaling_factor: 3.0 #鸟眼缩放（1.0 和 5.0 ）
+  width: 480
+  height: 720
+
+##############################################################
+#实时流处理如音视频转码
+go2rtc:
+  rtsp: #鸟眼重播加密
+    username: "admin"
+    password: "pass"
+  streams:
+    test_cam_sub:
+      - rtsp://rtspstream:wpUPourUSVf9_fNXFzU9G@zephyr.rtsp.stream/people
+      - "ffmpeg:back#video=h264#hardware"
+
+live:
+  stream_name: test_cam_sub
+  height: 720
+  quality: 8
+
+#检测参数
+motion:
+  threshold: 30 #阈值指示像素亮度需要多少变化才能被视为运动，较低的值意味着运动检测对颜色变化更敏感
+  contour_area: 10 #较小的值更敏感，这意味着远处的人、小动物等更有可能被检测为运动，但这也意味着阴影、树叶等的微小变化被检测为运动。较高的值灵敏度较低，这意味着这些事物不会被检测为运动，但存在风险，即在靠近摄像机之前无法检测到所需的运动。
+  lightning_threshold: 0.8 #当有人直接走到摄像头前时，某些摄像头（如门铃摄像头）可能会错过检测，并且lightning_threshold会导致重新校准运动检测。在这种情况下，可能需要增加 以确保不会错过这些对象
+
+#自定义检测模型
+model:
+  path: /path/to/model
+  width: 320
+  height: 320
+  input_tensor: "nhwc"
+  input_pixel_format: "bgr"
+  labelmap:
+    2: vehicle
+    3: vehicle
+    5: vehicle
+    7: vehicle
+    15: animal
+    16: animal
+    17: animal
+
+genai:
+  # Optional: Enable AI description generation (default: shown below)
+  enabled: False
+  # Required if enabled: Provider must be one of ollama, gemini, or openai
+  provider: ollama
+  # Required if provider is ollama. May also be used for an OpenAI API compatible backend with the openai provider.
+  base_url: http://localhost::11434
+  # Required if gemini or openai
+  api_key: "{FRIGATE_GENAI_API_KEY}"
+  # Optional: The default prompt for generating descriptions. Can use replacement
+  # variables like "label", "sub_label", "camera" to make more dynamic. (default: shown below)
+  prompt: "Describe the {label} in the sequence of images with as much detail as possible. Do not describe the background."
+  # Optional: Object specific prompts to customize description results
+  # Format: {label}: {prompt}
+  object_prompts:
+    person: "My special person prompt."
+
+#某些摄像机仅支持一个活动连接，或者您可能只想打开一个连接到摄像机的连接。RTSP 重播允许实现此目的：
+#https://docs.frigate.video/configuration/restream
