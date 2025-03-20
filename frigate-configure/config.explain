@@ -194,5 +194,18 @@ genai:
   object_prompts:
     person: "My special person prompt."
 
+
+#################################################
+detectors:
+  tensorrt:
+    type: tensorrt
+    device: 0 #This is the default, select the first GPU
+
+model:
+  path: /config/model_cache/tensorrt/yolov7-320.trt
+  input_tensor: nchw
+  input_pixel_format: rgb
+  width: 320
+  height: 320
 #某些摄像机仅支持一个活动连接，或者您可能只想打开一个连接到摄像机的连接。RTSP 重播允许实现此目的：
 #https://docs.frigate.video/configuration/restream

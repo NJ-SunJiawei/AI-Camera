@@ -206,6 +206,18 @@ database:
 
 6、Nvidia加速
     #https://docs.frigate.video/configuration/hardware_acceleration
+
+    配置/etc/docker/daemon.json
+    '''
+      "default-runtime": "nvidia",
+      "runtimes": {
+          "nvidia": {
+              "args": [],
+              "path": "/usr/bin/nvidia-container-runtime"
+          }
+      }
+    '''
+
     docker-compose yaml
     '''
     version: "3.9"
@@ -241,6 +253,9 @@ database:
           - "8555:8555/udp" # WebRTC over udp
         environment:
           FRIGATE_RTSP_PASSWORD: "password"   #rstp流的密码可以做成环境变量
+####
+    - YOLO_MODELS=yolov7-320,yolov7x-640
+    - USE_FP16=false
     '''
     或者
     docker run -d \

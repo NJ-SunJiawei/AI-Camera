@@ -1,5 +1,5 @@
 auth:
-  enabled: false
+  enabled: true
   reset_admin_password: true
 
 tls:
@@ -15,8 +15,9 @@ cameras:
       mode: objects  #objects/False
       order: 1 #排序
     ffmpeg:
+      hwaccel_args: preset-nvidia
       inputs:
-        - path: rtsp://rtspstream:0BAmPwv_l-r6k6_YxMTad@zephyr.rtsp.stream/traffic # <----- The stream you want to use for detection
+        - path: rtsp://127.0.0.1:8554/sjw-test1 # <----- The stream you want to use for detection
           input_args: preset-rtsp-generic
           roles:
             - record
@@ -43,6 +44,7 @@ cameras:
       mode: objects  #objects/False
       order: 2 #排序
     ffmpeg:
+      hwaccel_args: preset-nvidia
       input_args: preset-rtmp-generic
       output_args:
           record: preset-record-generic-audio-copy
@@ -93,12 +95,10 @@ timestamp_style:
 review:   #注意：可以在摄像头级别进行覆盖
   alerts: #将警报限制为特定标签
     labels:
-      - person
       - car
-  detections: #将检测限制为特定标签
+  detections: #将检测限制为特定标签 默认情况下，所有不符合警报条件的检测都符合检测条件
     labels:
       - person
-      - car
 
 objects:
   track:
@@ -112,12 +112,12 @@ objects:
 
 semantic_search:
   enabled: true
-  reindex: False
-  model_size: large
+  reindex: false
+  model_size: small #small/large
 
 birdseye:
-  enabled: True
-  restream: false #鸟眼重播依赖go2rtc，启用 birdseye 重播将导致 birdseye 24/7 全天候运行，增加cpu负担。
+  enabled: true
+  restream: true #鸟眼重流依赖go2rtc，启用 birdseye 重播将导致 birdseye 24/7 全天候运行，增加cpu负担。
   mode: continuous
   inactivity_threshold: 15 # 显示在过去 30 秒内具有已配置活动的所有摄像机
   layout:
@@ -125,3 +125,11 @@ birdseye:
     scaling_factor: 3.0 #鸟眼缩放（1.0 和 5.0 ）
   width: 480
   height: 720
+
+go2rtc:
+#  rtsp: #鸟眼重播加密
+#    username: "admin"
+#    password: "pass"
+  streams:
+    sjw-test1:
+      - rtsp://rtspstream:0BAmPwv_l-r6k6_YxMTad@zephyr.rtsp.stream/traffic
